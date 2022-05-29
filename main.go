@@ -32,6 +32,7 @@ func main() {
 	// SortByName := flag.Bool("SortByName", false, "Sorting the files by name")
 	// SortByTrackNumber := flag.Bool("SortByTrackNumber", true, "Sorting the files by the track number")
 
+	verbose := flag.Bool("verbose", false, "Prints more information about audio files")
 	export := flag.Bool("export", false, "??? (default false)")
 
 	flag.Parse()
@@ -54,7 +55,7 @@ func main() {
 
 	// Create a list of all files
 	Files := listFiles(*PathToFiles, *PathRecrusiv, extensions)
-	divideFilesToMedium(Files, *PathToFiles, *MediumName, int64(*SideLength), int64(*ReasonableDiff), *SideAmount, *MaxMediums, *export)
+	divideFilesToMedium(Files, *PathToFiles, *MediumName, int64(*SideLength), int64(*ReasonableDiff), *SideAmount, *MaxMediums, *verbose, *export)
 }
 
 func listFiles(path string, rec bool, extensions []string) []fs.FileInfo {
@@ -79,7 +80,20 @@ func listFiles(path string, rec bool, extensions []string) []fs.FileInfo {
 	return AudioFiles
 }
 
-func divideFilesToMedium(files []fs.FileInfo, path string, medium string, duration int64, diff int64, sides uint, maxMed uint, export bool) {
+func sortAodiofilesByTag(files []fs.FileInfo) []fs.FileInfo {
+	//for index, file := range files {}
+	return files
+}
+
+func printAudioFiles(file fs.FileInfo, song taggolib.Parser, verbose bool) {
+	if verbose {
+		fmt.Println(song.TrackNumber(), "-", song.Title(), "-", song.Album(), "-", song.Duration())
+	} else {
+		fmt.Println(file.Name(), song.Duration())
+	}
+}
+
+func divideFilesToMedium(files []fs.FileInfo, path string, medium string, duration int64, diff int64, sides uint, maxMed uint, verbose bool, export bool) {
 	var SidePlaytime time.Duration = 0 // Time
 	var SideMaxPlaytime = time.Duration(duration * 60000000000)
 	var MediumNumber = 1
@@ -94,7 +108,7 @@ func divideFilesToMedium(files []fs.FileInfo, path string, medium string, durati
 		if int(maxMed) >= MediumNumber || maxMed == 0 {
 			if (SidePlaytime + song.Duration()) <= (SideMaxPlaytime + time.Duration(diff*1000000000)) {
 				SidePlaytime += song.Duration()
-				fmt.Println(file.Name(), song.Duration())
+				printAudioFiles(file, song, verbose)
 			} else {
 				FreeSpaceAtMedium += SideMaxPlaytime - SidePlaytime
 				fmt.Println("free space at", medium, MediumNumber, "side", sideNr, ":", SideMaxPlaytime-SidePlaytime, "\n")
@@ -109,9 +123,8 @@ func divideFilesToMedium(files []fs.FileInfo, path string, medium string, durati
 
 				if int(maxMed) >= MediumNumber {
 					fmt.Println(medium, ":", MediumNumber, "Side :", sideNr)
-
 					SidePlaytime += song.Duration()
-					fmt.Println(file.Name(), song.Duration())
+					printAudioFiles(file, song, verbose)
 				}
 			}
 		} else {
@@ -119,7 +132,17 @@ func divideFilesToMedium(files []fs.FileInfo, path string, medium string, durati
 		}
 		_ = p.Close()
 	}
+
 	FreeSpaceAtMedium += SideMaxPlaytime - SidePlaytime
 	fmt.Println("free space at", medium, MediumNumber, "side", sideNr, ":", SideMaxPlaytime-SidePlaytime, "\n")
-	fmt.Println("free space of all medium:", FreeSpaceAtMedium)
+	fmt.Println("free space of all recorded sides:", FreeSpaceAtMedium)
+
+	if sideNr < int(sides) {
+		for sideNr <= int(sides) {
+			FreeSpaceAtMedium += SidePlaytime
+			sideNr++
+		}
+	}
+
+	fmt.Println("free space of all recorded medium:", FreeSpaceAtMedium)
 }
