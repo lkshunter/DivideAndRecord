@@ -1,6 +1,6 @@
 # Divide and Record
 This CLI Tool is made for people how want to recorde a huge amount of audio files to older mediums like cassettes or magnetic tape.
-The supported data types are:
+Supported audio types are:
 - .mp3
 - .flac
 - .ogg
@@ -12,22 +12,25 @@ The supported data types are:
 - [ ] List all files in subfolders (work in progress)
   - [ ] Create one report for all folders
   - [ ] Create for every folder his own report
-- [ ] Sort files by different audio tags (work in progress)
+- [x] Sort files by different audio tags
 - [ ] Export to txt file (work in progress)
 
 ## Compile
 ```
 go.exe build -o C:\Path\DivideAndRecord.exe DivideAndRecord
 ```
+
 ## Examples
+By default, only mp3 files will be processed. If you want to use flac or ogg set one or both following arguments ``-FLAC=true -OGG=true``. If you want no mp3 files set ``-MP3=false``.
+
 ### Default
-The only necessary argument ist ``-path``
+The only necessary argument is ``-path``
 ```
 .\DivideAndRecord.exe -Path="C:\path_to_audio_files"
 ```
 
 ### 90 Min cassette
-Cassette 90 minutes with 2 sides with each 45 minutes
+Cassette 90 minutes with 2 sides each 45 minutes
 ```
 .\DivideAndRecord.exe -SideLength=45 -SideAmount=2 -MediumName=cassette -ReasonableDiff=30 -verbose=false -Path="C:\path_to_audio_files"
 ```
@@ -283,6 +286,9 @@ free space of all recorded medium: 1h19m0s
         Should FLAC-files be indexed (default false)
   -OGG
         Should OGG-files be indexed (default false)
+  -SortByTag string
+        Sorting the files by metadata tag. Usable tags are: album, albumartist, 
+        artist, date, discnumber, duration, genre, publisher, title, tracknumber
 ```
 
 ### Different Settings
@@ -293,7 +299,7 @@ free space of all recorded medium: 1h19m0s
         help
 ```
 
-## Used librarys
+## Used library
 - taggolib
   - This library is used to read out the audio tags
     - ``go get github.com/mdlayher/taggolib``

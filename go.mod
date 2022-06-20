@@ -19,7 +19,8 @@ require (
 	github.com/wtolson/go-taglib v0.0.0-20210406152913-79209c280058 // indirect
 	gitlab.com/anost/audiotags v0.0.0-20191020160326-7c95c3f9f6ab // indirect
 	golang.org/x/crypto v0.0.0-20210421170649-83a5a9bb288b // indirect
-	golang.org/x/sys v0.0.0-20201119102817-f84b799fce68 // indirect
+	golang.org/x/exp v0.0.0-20220613132600-b0d781184e0d // indirect
+	golang.org/x/sys v0.0.0-20211019181941-9d821ace8654 // indirect
 	golang.org/x/text v0.3.7 // indirect
 	golang.org/x/xerrors v0.0.0-20220517211312-f3a8303e98df // indirect
 )
