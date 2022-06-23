@@ -56,7 +56,7 @@ func main() {
 	}
 
 	// checks if PathRecursive is selected
-	if *PathRecursive {
+	if !*PathRecursive {
 		Files := ListFiles(*PathToFiles, *SortByTag, *verbose, extensions)
 		DivideFilesToMedium(Files, *PathToFiles, *MediumName, int64(*SideLength), int64(*ReasonableDiff), *SideAmount, *MaxMediums, *verbose, *export)
 	} else {
