@@ -9,9 +9,9 @@ Supported audio types are:
 - [x] Sort by filename
 - [x] Set maximum medium for Record
 - [x] implement verbose argument
-- [ ] List all files in subfolders (work in progress)
+- [x] List all files in subfolders (work in progress)
   - [ ] Create one report for all folders
-  - [ ] Create for every folder his own report
+  - [x] Create for every folder his own report
 - [x] Sort files by different audio tags
 - [ ] Export to txt file (work in progress)
 
@@ -279,7 +279,7 @@ free space of all recorded medium: 1h19m0s
   -Path string
         Location of the files to be recorded
   -Recrusiv
-        Lists all files in subfolders
+        Generates for every subfolder his own report (default false)
   -MP3
         Should MP3-files be indexed (default true)
   -FLAC

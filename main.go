@@ -1,6 +1,7 @@
 package main
 
 import (
+	"errors"
 	"flag"
 	"fmt"
 	"github.com/mdlayher/taggolib"
@@ -8,12 +9,12 @@ import (
 	"io/ioutil"
 	"log"
 	"os"
+	"path/filepath"
 	"strings"
 	"time"
 )
 
 func main() {
-
 	// Information about the Medium
 	SideLength := flag.Uint("SideLength", 30, "Number of minutes playing time per page of the medium")
 	SideAmount := flag.Uint("SideAmount", 2, "The amount of sides of the medium")
@@ -23,7 +24,7 @@ func main() {
 
 	// Information about the Files
 	PathToFiles := flag.String("Path", "", "Location of the files to be recorded")
-	PathRecursive := flag.Bool("Recursive", false, "Lists all files in subfolder")
+	PathRecursive := flag.Bool("Recursive", false, "Generates for every subfolder his own report (default false)")
 	mp3 := flag.Bool("MP3", true, "Should MP3-files be indexed")
 	flac := flag.Bool("FLAC", false, "Should FLAC-files be indexed (default false)")
 	ogg := flag.Bool("OGG", false, "Should OGG-files be indexed (default false)")
@@ -31,51 +32,82 @@ func main() {
 	// Sorting
 	SortByTag := flag.String("SortByTag", "", "Sorting the files by metadata tag. Usable tags are: album, albumartist, artist, date, discnumber, duration, genre, publisher, title, tracknumber")
 
+	// other Tags
 	verbose := flag.Bool("verbose", false, "Prints more information about audio files")
 	export := flag.Bool("export", false, "??? (default false)")
 
 	flag.Parse()
 
-	if *PathToFiles == "" {
-		fmt.Println("Sorry no path argument used")
-		return
+	// checks if the path exists
+	if _, err := os.Stat(*PathToFiles); os.IsNotExist(err) {
+		panic(err)
 	}
 
+	// checks if at least one file extension is selected
+	extensions, ErrExtensions := SelectExtensions(*mp3, *flac, *ogg)
+	if ErrExtensions != nil {
+		panic(ErrExtensions)
+	}
+
+	// checks if the tag is usable
+	checkTag, ErrTag := CheckSelectedTag(*SortByTag)
+	if !checkTag {
+		panic(ErrTag)
+	}
+
+	// checks if PathRecursive is selected
+	if *PathRecursive {
+		Files := ListFiles(*PathToFiles, *SortByTag, *verbose, extensions)
+		DivideFilesToMedium(Files, *PathToFiles, *MediumName, int64(*SideLength), int64(*ReasonableDiff), *SideAmount, *MaxMediums, *verbose, *export)
+	} else {
+		Files := ListFilesRec(*PathToFiles, *SortByTag, *verbose, extensions)
+		for path, files := range Files {
+			fmt.Print(path, "\n")
+			DivideFilesToMedium(files, path, *MediumName, int64(*SideLength), int64(*ReasonableDiff), *SideAmount, *MaxMediums, *verbose, *export)
+			fmt.Println()
+		}
+	}
+}
+
+func SelectExtensions(mp3 bool, flac bool, ogg bool) ([]string, error) {
 	extensions := make([]string, 0)
-	if *mp3 {
+	if mp3 {
 		extensions = append(extensions, ".mp3")
 	}
-	if *flac {
+	if flac {
 		extensions = append(extensions, ".flac")
 	}
-	if *ogg {
+	if ogg {
 		extensions = append(extensions, ".ogg")
 	}
 
+	if len(extensions) == 0 {
+		return extensions, errors.New("logic error - no extensions are selected")
+	}
+
+	return extensions, nil
+}
+
+func CheckSelectedTag(tagInput string) (bool, error) {
 	UsableTags := [11]string{"album", "albumartist", "artist", "date", "discnumber", "duration", "genre", "publisher", "title", "tracknumber", ""}
 
 	checkTag := false
 	for _, tag := range UsableTags {
-		if 0 == strings.Compare(strings.ToLower(tag), strings.ToLower(*SortByTag)) {
+		if strings.EqualFold(strings.ToLower(tag), strings.ToLower(tagInput)) {
 			checkTag = true
 		}
 	}
 
 	if !checkTag {
-		panic("Wrong Tag")
+		return checkTag, errors.New("spell error - the selected tag are note supported")
 	}
 
-	// Create a list of all files
-	Files := listFiles(*PathToFiles, *PathRecursive, *SortByTag, *verbose, extensions)
-	divideFilesToMedium(Files, *PathToFiles, *MediumName, int64(*SideLength), int64(*ReasonableDiff), *SideAmount, *MaxMediums, *verbose, *export)
+	return checkTag, nil
 }
 
-func listFiles(path string, rec bool, tag string, verbose bool, extensions []string) []fs.FileInfo {
+func ListFiles(path string, tag string, verbose bool, extensions []string) []fs.FileInfo {
 	AudioFiles := make([]fs.FileInfo, 0)
 	files, err := ioutil.ReadDir(path)
-
-	//walk, _ := filepath.Walk(path, ".")
-	//fmt.Println(walk)
 
 	if err != nil {
 		log.Fatal(err)
@@ -90,50 +122,76 @@ func listFiles(path string, rec bool, tag string, verbose bool, extensions []str
 	}
 
 	if tag != "" {
-		sortAudioFilesByTag(AudioFiles, path, tag, verbose)
+		SortAudioFilesByTag(AudioFiles, path, tag, verbose)
 	}
 
 	return AudioFiles
 }
 
-func tagCompare(file1 taggolib.Parser, file2 taggolib.Parser, tag string) bool {
+func ListFilesRec(path string, tag string, verbose bool, extensions []string) map[string][]fs.FileInfo {
+	AudioFolder := make(map[string][]fs.FileInfo)
+
+	err := filepath.Walk(path, func(path string, info fs.FileInfo, err error) error {
+		if info.IsDir() && CheckFolderContentOnExtensions(path, extensions) {
+			fmt.Println(path)
+			AudioFolder[path] = ListFiles(path, tag, verbose, extensions)
+		}
+		return err
+	})
+	fmt.Println()
+
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	return AudioFolder
+}
+
+func CheckFolderContentOnExtensions(path string, extensions []string) bool {
+	files, err := ioutil.ReadDir(path)
+	check := false
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	for _, ext := range extensions {
+		for _, file := range files {
+			if strings.Contains(strings.ToLower(file.Name()), ext) {
+				check = true
+			}
+		}
+	}
+	return check
+}
+
+func TagCompare(file1 taggolib.Parser, file2 taggolib.Parser, tag string) bool {
 	result := true
 	switch tag {
 	case "album":
 		result = file1.Album() > file2.Album()
-		break
 	case "albumArtist":
 		result = file1.AlbumArtist() > file2.AlbumArtist()
-		break
 	case "artist":
 		result = file1.Artist() > file2.Artist()
-		break
 	case "date":
 		result = file1.Date() > file2.Date()
-		break
 	case "discNumber":
 		result = file1.DiscNumber() > file2.DiscNumber()
-		break
 	case "duration":
 		result = file1.Duration() > file2.Duration()
-		break
 	case "genre":
 		result = file1.Genre() > file2.Genre()
-		break
 	case "publisher":
 		result = file1.Publisher() > file2.Publisher()
-		break
 	case "title":
 		result = file1.Title() > file2.Title()
-		break
 	case "trackNumber":
 		result = file1.TrackNumber() > file2.TrackNumber()
-		break
 	}
 	return result
 }
 
-func sortAudioFilesByTag(files []fs.FileInfo, path string, tag string, verbose bool) []fs.FileInfo {
+func SortAudioFilesByTag(files []fs.FileInfo, path string, tag string, verbose bool) []fs.FileInfo {
 	for i := 0; i < len(files)-1; i++ {
 		for j := 0; j < len(files)-i-1; j++ {
 			file1, _ := os.Open(path + string(os.PathSeparator) + files[j].Name())
@@ -141,26 +199,33 @@ func sortAudioFilesByTag(files []fs.FileInfo, path string, tag string, verbose b
 			song1, _ := taggolib.New(file1)
 			song2, _ := taggolib.New(file2)
 
-			if tagCompare(song1, song2, strings.ToLower(tag)) {
+			if TagCompare(song1, song2, strings.ToLower(tag)) {
 				files[j], files[j+1] = files[j+1], files[j]
 			}
 
-			file1.Close()
-			file2.Close()
+			errFile1 := file1.Close()
+			errFile2 := file2.Close()
+
+			if errFile1 != nil {
+				panic(errFile1)
+			}
+			if errFile2 != nil {
+				panic(errFile2)
+			}
 		}
 	}
 	if verbose {
 		for _, file := range files {
 			p, _ := os.Open(path + string(os.PathSeparator) + file.Name())
 			song, _ := taggolib.New(p)
-			printAudioFiles(file, song, verbose)
+			PrintAudioFiles(file, song, verbose)
 		}
 	}
 
 	return files
 }
 
-func printAudioFiles(file fs.FileInfo, song taggolib.Parser, verbose bool) {
+func PrintAudioFiles(file fs.FileInfo, song taggolib.Parser, verbose bool) {
 	if verbose {
 		fmt.Println(song.TrackNumber(), "-", song.Title(), "-", song.Album(), "-", song.Duration())
 	} else {
@@ -168,14 +233,14 @@ func printAudioFiles(file fs.FileInfo, song taggolib.Parser, verbose bool) {
 	}
 }
 
-func divideFilesToMedium(files []fs.FileInfo, path string, medium string, duration int64, diff int64, sides uint, maxMed uint, verbose bool, export bool) {
-	var SidePlaytime time.Duration = 0 // Time
+func DivideFilesToMedium(files []fs.FileInfo, path string, medium string, duration int64, diff int64, sides uint, maxMed uint, verbose bool, export bool) {
+	var SidePlaytime time.Duration // Time
 	var SideMaxPlaytime = time.Duration(duration * 60000000000)
 	var MediumNumber = 1
 	var sideNr = 1
-	var FreeSpaceAtMedium time.Duration = 0
+	var FreeSpaceAtMedium time.Duration
 
-	fmt.Println(medium, ":", MediumNumber, "Side :", sideNr)
+	fmt.Println(medium, MediumNumber, "side", sideNr)
 	for _, file := range files {
 		p, _ := os.Open(path + string(os.PathSeparator) + file.Name())
 		song, _ := taggolib.New(p)
@@ -183,7 +248,7 @@ func divideFilesToMedium(files []fs.FileInfo, path string, medium string, durati
 		if int(maxMed) >= MediumNumber || maxMed == 0 {
 			if (SidePlaytime + song.Duration()) <= (SideMaxPlaytime + time.Duration(diff*1000000000)) {
 				SidePlaytime += song.Duration()
-				printAudioFiles(file, song, verbose)
+				PrintAudioFiles(file, song, verbose)
 			} else {
 				FreeSpaceAtMedium += SideMaxPlaytime - SidePlaytime
 				fmt.Println("free space at", medium, MediumNumber, "side", sideNr, ":", SideMaxPlaytime-SidePlaytime)
@@ -192,15 +257,15 @@ func divideFilesToMedium(files []fs.FileInfo, path string, medium string, durati
 
 				if sideNr == int(sides) {
 					sideNr = 1
-					MediumNumber += 1
+					MediumNumber++
 				} else {
-					sideNr += 1
+					sideNr++
 				}
 
-				if int(maxMed) >= MediumNumber {
-					fmt.Println(medium, ":", MediumNumber, "Side :", sideNr)
+				if int(maxMed) <= MediumNumber {
+					fmt.Println(medium, MediumNumber, "side", sideNr)
 					SidePlaytime += song.Duration()
-					printAudioFiles(file, song, verbose)
+					PrintAudioFiles(file, song, verbose)
 				}
 			}
 		} else {
@@ -210,8 +275,7 @@ func divideFilesToMedium(files []fs.FileInfo, path string, medium string, durati
 	}
 
 	FreeSpaceAtMedium += SideMaxPlaytime - SidePlaytime
-	fmt.Println("free space at", medium, MediumNumber, "side", sideNr, ":", SideMaxPlaytime-SidePlaytime)
-	fmt.Println()
+	fmt.Print("free space at ", medium, " ", MediumNumber, " side ", sideNr, ": ", SideMaxPlaytime-SidePlaytime, "\n\n")
 	fmt.Println("free space of all recorded sides:", FreeSpaceAtMedium)
 
 	if sideNr < int(sides) {
